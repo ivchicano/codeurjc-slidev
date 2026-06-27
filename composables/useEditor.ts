@@ -1,4 +1,4 @@
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 
 interface Rect {
   x: number
@@ -95,12 +95,55 @@ export function useEditor() {
     if (!editing.value) selected.value = null
   }
 
+  const undoStack = ref<Record<string, Rect>[]>([])
+  const undoCheckpoint = ref<Record<string, Rect> | null>(null)
+
+  function canUndo() {
+    return undoStack.value.length > 0
+  }
+
+  function pushUndoCheckpoint() {
+    undoCheckpoint.value = clonePositions()
+  }
+
+  function commitUndo() {
+    if (undoCheckpoint.value) {
+      // only push if something actually changed
+      const c = undoCheckpoint.value
+      const changed = Object.keys(c).some(key =>
+        c[key].x !== positions[key].x || c[key].y !== positions[key].y ||
+        c[key].w !== positions[key].w || c[key].h !== positions[key].h
+      )
+      if (changed) undoStack.value.push(undoCheckpoint.value)
+      undoCheckpoint.value = null
+    }
+  }
+
+  function undo() {
+    const prev = undoStack.value.pop()
+    if (!prev) return
+    for (const key of Object.keys(prev)) {
+      if (prev[key]) Object.assign(positions[key], prev[key])
+    }
+  }
+
+  function onKeyDown(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      e.preventDefault()
+      undo()
+    }
+  }
+
+  onMounted(() => window.addEventListener('keydown', onKeyDown))
+  onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
+
   function startDrag(e: MouseEvent, name: string) {
     if (!editing.value) return
     e.preventDefault()
     selected.value = name
     const p = positions[name]
     if (!p) return
+    pushUndoCheckpoint()
     dragState.value = { el: name, startX: e.clientX, startY: e.clientY, origX: p.x, origY: p.y }
     window.addEventListener('mousemove', onDrag)
     window.addEventListener('mouseup', stopDrag)
@@ -117,6 +160,7 @@ export function useEditor() {
   }
 
   function stopDrag() {
+    commitUndo()
     dragState.value = null
     window.removeEventListener('mousemove', onDrag)
     window.removeEventListener('mouseup', stopDrag)
@@ -129,6 +173,7 @@ export function useEditor() {
     selected.value = name
     const p = positions[name]
     if (!p) return
+    pushUndoCheckpoint()
     resizeState.value = { el: name, startX: e.clientX, startY: e.clientY, origW: p.w, origH: p.h }
     window.addEventListener('mousemove', onResize)
     window.addEventListener('mouseup', stopResize)
@@ -143,6 +188,7 @@ export function useEditor() {
   }
 
   function stopResize() {
+    commitUndo()
     resizeState.value = null
     window.removeEventListener('mousemove', onResize)
     window.removeEventListener('mouseup', stopResize)
@@ -234,6 +280,7 @@ export function useEditor() {
     saving,
     saved,
     dirty,
+    canUndo,
     toggle,
     startDrag,
     startResize,
@@ -241,5 +288,6 @@ export function useEditor() {
     exportCss,
     saveLayout,
     resetLayout,
+    undo,
   }
 }

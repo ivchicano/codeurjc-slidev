@@ -119,6 +119,14 @@ watch(() => editor.editing.value, (editing) => {
       </div>
 
       <button
+        class="ep-undo"
+        :class="{ disabled: !editor.canUndo() }"
+        :disabled="!editor.canUndo()"
+        @click="editor.undo()"
+      >
+        Undo (Ctrl+Z)
+      </button>
+      <button
         class="ep-reset"
         :class="{ disabled: !editor.dirty.value }"
         :disabled="!editor.dirty.value"
@@ -395,11 +403,34 @@ watch(() => editor.editing.value, (editing) => {
   border-color: #2563eb;
 }
 
+.ep-undo {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  background: #2a2a4e;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ep-undo:not(.disabled):hover {
+  background: #3a3a6e;
+  color: #e0e0e0;
+}
+
+.ep-undo.disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 .ep-reset {
   width: 100%;
   padding: 8px;
   border: none;
-  border-top: 1px solid rgba(255,255,255,0.08);
   background: #3a3a5e;
   color: #aaa;
   cursor: pointer;
