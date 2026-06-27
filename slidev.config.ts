@@ -1,4 +1,8 @@
 import { defineConfig } from 'slidev'
+import { resolve } from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
 const VAR_MAP: Record<string, Record<string, string>> = {
   'red-bar': { h: '--ed-red-h' },
@@ -9,6 +13,11 @@ const VAR_MAP: Record<string, Record<string, string>> = {
 
 export default defineConfig({
   vite: {
+    resolve: {
+      alias: {
+        '@slidev/client/internals/SideEditor.vue': resolve(__dirname, 'components/SideEditor.vue'),
+      },
+    },
     plugins: [
       {
         name: 'slidev-layout-saver',
@@ -23,8 +32,8 @@ export default defineConfig({
             for await (const chunk of req) chunks.push(chunk)
             const body = JSON.parse(Buffer.concat(chunks).toString())
             const { readFileSync, writeFileSync } = await import('fs')
-            const { resolve } = await import('path')
-            const layoutPath = resolve(process.cwd(), 'layouts/default.vue')
+            const { resolve: resolvePath } = await import('path')
+            const layoutPath = resolvePath(process.cwd(), 'layouts/default.vue')
             let content = readFileSync(layoutPath, 'utf-8')
 
             for (const [name, pos] of Object.entries(body.positions) as [string, Record<string, number>][]) {
