@@ -100,11 +100,14 @@ async function copyCss() {
       />
     </div>
 
-    <div v-if="!editor.editing.value" class="edit-btn" @click="editor.toggle()">
-      ✎ Edit
-    </div>
+    <Teleport to="body">
+      <div v-if="!editor.editing.value" class="edit-btn" @click="editor.toggle()">
+        ✎ Edit
+      </div>
+    </Teleport>
 
-    <aside v-if="editor.editing.value" class="editor-panel">
+    <Teleport to="body">
+      <aside v-if="editor.editing.value" class="editor-panel">
       <div class="ep-header">
         <strong>Layout Editor</strong>
         <button class="ep-close" @click="editor.toggle()">✕</button>
@@ -140,6 +143,7 @@ async function copyCss() {
         {{ copied ? 'Copied!' : 'Copy CSS' }}
       </button>
     </aside>
+    </Teleport>
   </div>
 </template>
 
