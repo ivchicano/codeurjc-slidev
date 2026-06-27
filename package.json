@@ -9,5 +9,9 @@
   "dependencies": {
     "@slidev/cli": "^52.15.0",
     "@slidev/theme-default": "^0.25.0"
+  },
+  "devDependencies": {
+    "playwright-chromium": "^1.61.1",
+    "unocss": "^66.7.3"
   }
 }

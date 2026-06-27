@@ -1,9 +1,26 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useEditor } from '../composables/useEditor'
 
 const editor = useEditor()
 const copied = ref(false)
+
+watch(() => editor.editing.value, (editing) => {
+  const styleId = 'slidev-editor-shift'
+  if (editing) {
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style')
+      style.id = styleId
+      style.textContent = `
+        .slidev-slide-content { margin-right: 270px !important; transition: margin-right 0.2s; }
+        .slidev-page { overflow: hidden; }
+      `
+      document.head.appendChild(style)
+    }
+  } else {
+    document.getElementById(styleId)?.remove()
+  }
+})
 
 async function copyCss() {
   const css = editor.exportCss()
@@ -27,66 +44,59 @@ async function copyCss() {
 </script>
 
 <template>
-  <div
-    class="slidev-layout default bg-white text-black"
-    :class="{ editing: editor.editing.value }"
-  >
+  <div class="slidev-layout default relative h-full w-full bg-white text-black">
     <div
-      class="slide-area"
-      :style="editor.editing.value ? editor.rootStyle.value : {}"
+      class="red-bar"
+      :class="{ 'el-active': editor.editing.value && editor.selected.value === 'red-bar' }"
+      @mousedown.stop="editor.startDrag($event, 'red-bar')"
     >
       <div
-        class="red-bar"
-        :class="{ 'el-active': editor.editing.value && editor.selected.value === 'red-bar' }"
-        @mousedown.stop="editor.startDrag($event, 'red-bar')"
-      >
-        <div
-          v-if="editor.editing.value && editor.selected.value === 'red-bar'"
-          class="resize-handle b"
-          @mousedown.stop="editor.startResize($event, 'red-bar')"
-        />
-      </div>
+        v-if="editor.editing.value && editor.selected.value === 'red-bar'"
+        class="resize-handle b"
+        @mousedown.stop="editor.startResize($event, 'red-bar')"
+      />
+    </div>
 
+    <div
+      class="logo"
+      :class="{ 'el-active': editor.editing.value && editor.selected.value === 'logo' }"
+      @mousedown.stop="editor.startDrag($event, 'logo')"
+    >
+      <img src="/images/logo.png" alt="Logo">
       <div
-        class="logo"
-        :class="{ 'el-active': editor.editing.value && editor.selected.value === 'logo' }"
-        @mousedown.stop="editor.startDrag($event, 'logo')"
-      >
-        <img src="/images/logo.png" alt="Logo">
-        <div
-          v-if="editor.editing.value && editor.selected.value === 'logo'"
-          class="resize-handle se"
-          @mousedown.stop="editor.startResize($event, 'logo')"
-        />
-      </div>
+        v-if="editor.editing.value && editor.selected.value === 'logo'"
+        class="resize-handle se"
+        @mousedown.stop="editor.startResize($event, 'logo')"
+      />
+    </div>
 
+    <div
+      class="content"
+      :class="{ 'el-active': editor.editing.value && editor.selected.value === 'content' }"
+      :style="editor.editing.value ? editor.rootStyle.value : {}"
+      @mousedown.stop="editor.startDrag($event, 'content')"
+    >
+      <slot />
       <div
-        class="content"
-        :class="{ 'el-active': editor.editing.value && editor.selected.value === 'content' }"
-        @mousedown.stop="editor.startDrag($event, 'content')"
-      >
-        <slot />
-        <div
-          v-if="editor.editing.value && editor.selected.value === 'content'"
-          class="resize-handle se"
-          @mousedown.stop="editor.startResize($event, 'content')"
-        />
-      </div>
+        v-if="editor.editing.value && editor.selected.value === 'content'"
+        class="resize-handle se"
+        @mousedown.stop="editor.startResize($event, 'content')"
+      />
+    </div>
 
+    <div
+      v-if="editor.editing.value"
+      class="title-overlay"
+      :style="{ top: editor.positions.title.y + 'px', left: editor.positions.title.x + 'px' }"
+      :class="{ 'el-active': editor.selected.value === 'title' }"
+      @mousedown.stop="editor.startDrag($event, 'title')"
+    >
+      <span class="el-tag">Title</span>
       <div
-        v-if="editor.editing.value"
-        class="title-overlay"
-        :style="{ top: editor.positions.title.y + 'px', left: editor.positions.title.x + 'px' }"
-        :class="{ 'el-active': editor.selected.value === 'title' }"
-        @mousedown.stop="editor.startDrag($event, 'title')"
-      >
-        <span class="el-tag">Title</span>
-        <div
-          v-if="editor.selected.value === 'title'"
-          class="resize-handle se"
-          @mousedown.stop="editor.startResize($event, 'title')"
-        />
-      </div>
+        v-if="editor.selected.value === 'title'"
+        class="resize-handle se"
+        @mousedown.stop="editor.startResize($event, 'title')"
+      />
     </div>
 
     <div v-if="!editor.editing.value" class="edit-btn" @click="editor.toggle()">
@@ -151,24 +161,6 @@ async function copyCss() {
 </style>
 
 <style scoped>
-.slide-area {
-  position: relative;
-  height: 100%;
-  background: white;
-}
-
-.editing .slide-area {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.editing {
-  display: flex;
-  flex-direction: row;
-  height: 100%;
-}
-
 .red-bar {
   position: absolute;
   top: 0;
@@ -284,15 +276,18 @@ async function copyCss() {
 .edit-btn:hover { opacity: 1; }
 
 .editor-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
   width: 270px;
-  flex-shrink: 0;
+  height: 100%;
+  z-index: 200;
   background: #1a1a2e;
   color: #e0e0e0;
   font-size: 12px;
   font-family: system-ui, sans-serif;
   display: flex;
   flex-direction: column;
-  height: 100%;
   overflow: hidden;
 }
 
