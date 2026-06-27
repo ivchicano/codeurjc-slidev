@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { watch } from 'vue'
 import { useEditor } from '../composables/useEditor'
 
 const editor = useEditor()
-const copied = ref(false)
 
 watch(() => editor.editing.value, (editing) => {
   const styleId = 'slidev-editor-shift'
@@ -22,26 +21,6 @@ watch(() => editor.editing.value, (editing) => {
     existing.remove()
   }
 })
-
-async function copyCss() {
-  const css = editor.exportCss()
-  try {
-    await navigator.clipboard.writeText(css)
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 2000)
-  } catch {
-    const ta = document.createElement('textarea')
-    ta.value = css
-    ta.style.position = 'fixed'
-    ta.style.opacity = '0'
-    document.body.appendChild(ta)
-    ta.select()
-    document.execCommand('copy')
-    document.body.removeChild(ta)
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 2000)
-  }
-}
 </script>
 
 <template>
@@ -139,8 +118,8 @@ async function copyCss() {
         </div>
       </div>
 
-      <button class="ep-export" @click="copyCss">
-        {{ copied ? 'Copied!' : 'Copy CSS' }}
+      <button class="ep-export" @click="editor.saveLayout()">
+        {{ editor.saving.value ? 'Saving...' : editor.saved.value ? 'Saved!' : 'Save Layout' }}
       </button>
     </aside>
     </Teleport>

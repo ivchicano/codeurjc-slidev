@@ -173,6 +173,27 @@ export function useEditor() {
     }).join('\n\n')
   }
 
+  const saving = ref(false)
+  const saved = ref(false)
+
+  async function saveLayout() {
+    saving.value = true
+    saved.value = false
+    try {
+      const resp = await fetch('/api/save-layout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ positions: { ...positions } }),
+      })
+      saved.value = resp.ok
+      if (resp.ok) setTimeout(() => { saved.value = false }, 2000)
+    } catch {
+      saved.value = false
+    } finally {
+      saving.value = false
+    }
+  }
+
   const elementNames = computed(() => Object.keys(ELEMENTS))
 
   return {
@@ -180,10 +201,13 @@ export function useEditor() {
     selected,
     positions,
     elementNames,
+    saving,
+    saved,
     toggle,
     startDrag,
     startResize,
     rootStyle,
     exportCss,
+    saveLayout,
   }
 }
