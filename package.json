@@ -8,7 +8,9 @@
   },
   "dependencies": {
     "@slidev/cli": "^52.15.0",
-    "@slidev/theme-default": "^0.25.0"
+    "@slidev/client": "52.16.0",
+    "@slidev/theme-default": "^0.25.0",
+    "@vueuse/core": "^14.3.0"
   },
   "devDependencies": {
     "playwright-chromium": "^1.61.1",

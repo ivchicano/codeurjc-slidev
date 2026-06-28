@@ -13,12 +13,26 @@ const VAR_MAP: Record<string, Record<string, string>> = {
 
 export default defineConfig({
   vite: {
+    optimizeDeps: {
+      exclude: ['@slidev/client'],
+    },
     resolve: {
       alias: {
         '@slidev/client/internals/SideEditor.vue': resolve(__dirname, 'components/SideEditor.vue'),
       },
     },
     plugins: [
+      {
+        name: 'slidev-side-editor-override',
+        enforce: 'pre',
+        resolveId(source, importer) {
+          if (!importer) return null
+          if (source.endsWith('SideEditor.vue') && source.includes('internals')) {
+            return resolve(__dirname, 'components/SideEditor.vue')
+          }
+          return null
+        },
+      },
       {
         name: 'slidev-layout-saver',
         configureServer(server) {
