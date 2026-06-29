@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.local
 .DS_Store
-pnpm-workspace.yaml
-slides-export.pdf
 *.pdf
+slides-export.pdf
+test-results/
+e2e/node_modules/
+e2e/layouts/*.vue
+!e2e/layouts/default.vue

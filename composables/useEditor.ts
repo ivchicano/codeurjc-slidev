@@ -12,6 +12,7 @@ const ELEMENTS: Record<string, {
   color: string
   initial: Rect
   cssOutput: (pos: Rect) => string
+  invertX?: boolean
 }> = {
   'red-bar': {
     label: 'Red Bar',
@@ -31,6 +32,7 @@ const ELEMENTS: Record<string, {
     label: 'Logo',
     color: '#e8792b',
     initial: { x: 24, y: 20, w: 120, h: 48 },
+    invertX: true,
     cssOutput: (pos) => [
       'position: absolute',
       `top: ${pos.y}px`,
@@ -70,6 +72,8 @@ const _sharedPositions = reactive<Record<string, Rect>>({})
 for (const key of Object.keys(ELEMENTS)) {
   _sharedPositions[key] = { ...ELEMENTS[key].initial }
 }
+const _sharedUndoStack = ref<Record<string, Rect>[]>([])
+const _sharedUndoCheckpoint = ref<Record<string, Rect> | null>(null)
 
 export function useEditor() {
   const editing = _sharedEditing
@@ -82,6 +86,8 @@ export function useEditor() {
     startY: number
     origX: number
     origY: number
+    scale: number
+    invertX: boolean
   } | null>(null)
 
   const resizeState = ref<{
@@ -90,6 +96,7 @@ export function useEditor() {
     startY: number
     origW: number
     origH: number
+    scale: number
   } | null>(null)
 
   function toggle() {
@@ -97,12 +104,10 @@ export function useEditor() {
     if (!editing.value) selected.value = null
   }
 
-  const undoStack = ref<Record<string, Rect>[]>([])
-  const undoCheckpoint = ref<Record<string, Rect> | null>(null)
+  const undoStack = _sharedUndoStack
+  const undoCheckpoint = _sharedUndoCheckpoint
 
-  function canUndo() {
-    return undoStack.value.length > 0
-  }
+  const canUndo = computed(() => undoStack.value.length > 0)
 
   function pushUndoCheckpoint() {
     undoCheckpoint.value = clonePositions()
@@ -139,6 +144,12 @@ export function useEditor() {
   onMounted(() => window.addEventListener('keydown', onKeyDown))
   onUnmounted(() => window.removeEventListener('keydown', onKeyDown))
 
+  function getContainerScale(): number {
+    const container = document.querySelector('.slidev-layout.default')
+    if (!container) return 1
+    return container.getBoundingClientRect().width / container.scrollWidth
+  }
+
   function startDrag(e: MouseEvent, name: string) {
     if (!editing.value) return
     e.preventDefault()
@@ -146,7 +157,13 @@ export function useEditor() {
     const p = positions[name]
     if (!p) return
     pushUndoCheckpoint()
-    dragState.value = { el: name, startX: e.clientX, startY: e.clientY, origX: p.x, origY: p.y }
+    const elCfg = ELEMENTS[name]
+    dragState.value = {
+      el: name, startX: e.clientX, startY: e.clientY,
+      origX: p.x, origY: p.y,
+      scale: getContainerScale(),
+      invertX: elCfg?.invertX ?? false,
+    }
     window.addEventListener('mousemove', onDrag)
     window.addEventListener('mouseup', stopDrag)
   }
@@ -155,9 +172,10 @@ export function useEditor() {
     if (!dragState.value) return
     const p = positions[dragState.value.el]
     if (!p) return
-    const dx = e.clientX - dragState.value.startX
-    const dy = e.clientY - dragState.value.startY
-    p.x = Math.round(Math.max(0, dragState.value.origX + dx))
+    const dx = (e.clientX - dragState.value.startX) / dragState.value.scale
+    const dy = (e.clientY - dragState.value.startY) / dragState.value.scale
+    const xMul = dragState.value.invertX ? -1 : 1
+    p.x = Math.round(Math.max(0, dragState.value.origX + dx * xMul))
     p.y = Math.round(Math.max(0, dragState.value.origY + dy))
   }
 
@@ -176,7 +194,11 @@ export function useEditor() {
     const p = positions[name]
     if (!p) return
     pushUndoCheckpoint()
-    resizeState.value = { el: name, startX: e.clientX, startY: e.clientY, origW: p.w, origH: p.h }
+    resizeState.value = {
+      el: name, startX: e.clientX, startY: e.clientY,
+      origW: p.w, origH: p.h,
+      scale: getContainerScale(),
+    }
     window.addEventListener('mousemove', onResize)
     window.addEventListener('mouseup', stopResize)
   }
@@ -185,8 +207,10 @@ export function useEditor() {
     if (!resizeState.value) return
     const p = positions[resizeState.value.el]
     if (!p) return
-    p.w = Math.max(20, resizeState.value.origW + e.clientX - resizeState.value.startX)
-    p.h = Math.max(10, resizeState.value.origH + e.clientY - resizeState.value.startY)
+    const dx = (e.clientX - resizeState.value.startX) / resizeState.value.scale
+    const dy = (e.clientY - resizeState.value.startY) / resizeState.value.scale
+    p.w = Math.max(20, resizeState.value.origW + dx)
+    p.h = Math.max(10, resizeState.value.origH + dy)
   }
 
   function stopResize() {
@@ -251,6 +275,9 @@ export function useEditor() {
     }
   }
 
+  const saveAs = ref(true)
+  const saveLayoutName = ref('')
+
   async function saveLayout() {
     saving.value = true
     saved.value = false
@@ -258,21 +285,36 @@ export function useEditor() {
       const resp = await fetch('/api/save-layout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ positions: { ...positions } }),
+        body: JSON.stringify({
+          positions: { ...positions },
+          saveAs: saveAs.value,
+          layoutName: saveLayoutName.value,
+        }),
       })
       if (resp.ok) {
+        const result = await resp.json()
+        if (result?.layoutName) {
+          saveLayoutName.value = result.layoutName
+        }
         snapshot.value = clonePositions()
         saved.value = true
         setTimeout(() => { saved.value = false }, 2000)
+        return result
       }
     } catch {
       saved.value = false
     } finally {
       saving.value = false
     }
+    return null
   }
 
   const elementNames = computed(() => Object.keys(ELEMENTS))
+
+  function clearUndo() {
+    undoStack.value.splice(0)
+    undoCheckpoint.value = null
+  }
 
   return {
     editing,
@@ -282,6 +324,8 @@ export function useEditor() {
     saving,
     saved,
     dirty,
+    saveAs,
+    saveLayoutName,
     canUndo,
     toggle,
     startDrag,
@@ -291,5 +335,6 @@ export function useEditor() {
     saveLayout,
     resetLayout,
     undo,
+    clearUndo,
   }
 }

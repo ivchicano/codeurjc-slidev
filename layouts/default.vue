@@ -5,7 +5,11 @@ const editor = useEditor()
 </script>
 
 <template>
-  <div class="slidev-layout default relative h-full w-full bg-white text-black">
+  <div
+    class="slidev-layout default relative h-full w-full bg-white text-black"
+    :class="{ editing: editor.editing.value }"
+    :style="editor.editing.value ? editor.rootStyle.value : {}"
+  >
     <div
       class="red-bar"
       :class="{ 'el-active': editor.editing.value && editor.selected.value === 'red-bar' }"
@@ -34,7 +38,6 @@ const editor = useEditor()
     <div
       class="content"
       :class="{ 'el-active': editor.editing.value && editor.selected.value === 'content' }"
-      :style="editor.editing.value ? editor.rootStyle.value : {}"
       @mousedown.stop="editor.startDrag($event, 'content')"
     >
       <slot />
@@ -105,7 +108,7 @@ const editor = useEditor()
 
 .content {
   padding-top: var(--ed-content-py, 80px);
-  padding-right: var(--ed-content-pr, 120px);
+  padding-right: var(--ed-content-pr, 24px);
   min-height: 200px;
 }
 

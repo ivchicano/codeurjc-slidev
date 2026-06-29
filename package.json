@@ -1,10 +1,13 @@
 {
-  "name": "tema-3-api-rest",
+  "name": "codeurjc-slidev",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "slidev --open",
     "build": "slidev build",
-    "export": "slidev export"
+    "export": "slidev export",
+    "test": "vitest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@slidev/cli": "^52.15.0",
@@ -13,7 +16,11 @@
     "@vueuse/core": "^14.3.0"
   },
   "devDependencies": {
-    "playwright-chromium": "^1.61.1",
-    "unocss": "^66.7.3"
+    "@playwright/test": "^1.61.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/vue": "^8.1.0",
+    "jsdom": "^29.1.1",
+    "unocss": "^66.7.3",
+    "vitest": "^4.1.9"
   }
 }

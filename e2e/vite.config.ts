@@ -1,5 +1,8 @@
 import { resolve } from 'path'
 import { readFileSync, existsSync } from 'fs'
+import { fileURLToPath } from 'url'
+
+const __dirname = resolve(import.meta.dirname, '..')
 
 const VAR_MAP: Record<string, Record<string, string>> = {
   'red-bar': { h: '--ed-red-h' },
@@ -8,8 +11,8 @@ const VAR_MAP: Record<string, Record<string, string>> = {
   content: { y: '--ed-content-py', x: '--ed-content-pr' },
 }
 
-const customSideEditorPath = resolve(import.meta.dirname, '_override/SideEditor.vue')
-const useEditorAbsPath = `/@fs${resolve(import.meta.dirname, 'composables/useEditor.ts')}`
+const customSideEditorPath = resolve(__dirname, '_override/SideEditor.vue')
+const useEditorAbsPath = `/@fs${resolve(__dirname, 'composables/useEditor.ts')}`
 
 export default {
   plugins: [
@@ -37,7 +40,7 @@ export default {
           const body = JSON.parse(Buffer.concat(chunks).toString())
           const { readFileSync, writeFileSync } = await import('fs')
           const { resolve: resolvePath } = await import('path')
-          const layoutDir = resolvePath(process.cwd(), 'layouts')
+          const layoutDir = resolvePath(import.meta.dirname, 'layouts')
           const layoutPath = resolvePath(layoutDir, 'default.vue')
           let content = readFileSync(layoutPath, 'utf-8')
 
