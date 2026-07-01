@@ -125,6 +125,21 @@ describe('useEditor', () => {
     expect(positions.title.h).toBeGreaterThan(origH)
   })
 
+  it('resize rounds width and height to integers, so saved CSS px values can be restored on reload', () => {
+    const { startResize, editing, clearUndo, positions } = useEditor()
+    clearUndo()
+    editing.value = true
+    // A mouse delta chosen to produce a non-integer raw offset
+    const mouseDown = new MouseEvent('mousedown', { clientX: 100, clientY: 100 })
+    startResize(mouseDown, 'title')
+    const mouseMove = new MouseEvent('mousemove', { clientX: 137, clientY: 111 })
+    window.dispatchEvent(mouseMove)
+    const mouseUp = new MouseEvent('mouseup')
+    window.dispatchEvent(mouseUp)
+    expect(Number.isInteger(positions.title.w)).toBe(true)
+    expect(Number.isInteger(positions.title.h)).toBe(true)
+  })
+
   it('resize updates content width and height', () => {
     const { startResize, editing, clearUndo, positions } = useEditor()
     clearUndo()

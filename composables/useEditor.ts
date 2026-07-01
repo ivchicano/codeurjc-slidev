@@ -215,8 +215,8 @@ export function useEditor() {
     if (!p) return
     const dx = (e.clientX - resizeState.value.startX) / resizeState.value.scale
     const dy = (e.clientY - resizeState.value.startY) / resizeState.value.scale
-    p.w = Math.max(20, resizeState.value.origW + dx)
-    p.h = Math.max(10, resizeState.value.origH + dy)
+    p.w = Math.round(Math.max(20, resizeState.value.origW + dx))
+    p.h = Math.round(Math.max(10, resizeState.value.origH + dy))
   }
 
   function stopResize() {

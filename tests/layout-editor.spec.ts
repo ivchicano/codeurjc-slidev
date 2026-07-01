@@ -472,4 +472,114 @@ test.describe('Layout Editor E2E', () => {
     expect(Math.abs(restoredY - expectedY)).toBeLessThanOrEqual(2);
   });
 
+  test('overwrite save on a non-default layout modifies that layout file, not default.vue', async ({ page }) => {
+    // First, save as a new layout so the slide is no longer using "default"
+    const layoutName = `test-layout-${Date.now()}`;
+    await page.locator('.lep-name-row input').fill(layoutName);
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'load', timeout: 30000 }),
+      page.locator('.lep-btn.lep-btn-primary').click(),
+    ]);
+    await page.waitForTimeout(2000);
+
+    let newLayoutPath = resolve(rootLayoutsDir, `${layoutName}.vue`);
+    if (!existsSync(newLayoutPath)) {
+      newLayoutPath = resolve(e2eLayoutsDir, `${layoutName}.vue`);
+    }
+    const beforeOverwrite = readFileSync(defaultLayoutPath, 'utf-8');
+
+    // Reopen the editor on the new layout and make another change
+    if (!(await page.locator('button:has-text("Hide editor")').isVisible().catch(() => false))) {
+      await page.locator('button:has-text("Show editor")').click();
+    }
+    await page.locator('button:has-text("Switch to layout tab")').click();
+    await page.waitForSelector('.layout-editor-panel', { timeout: 10000 });
+
+    const contentBtn = page.locator('.lep-el').filter({ hasText: 'Content' });
+    await contentBtn.click();
+    const yInput = page.locator('.lep-props label').filter({ hasText: 'Y:' }).locator('input');
+    const overwriteY = parseInt(await yInput.inputValue(), 10) + 33;
+    await yInput.fill(String(overwriteY));
+    await page.keyboard.press('Tab');
+
+    // Uncheck "Save as new layout" -> overwrite whatever layout is currently active
+    const saveAsCheckbox = page.locator('input[type="checkbox"]');
+    await saveAsCheckbox.click();
+    const requestPromise = page.waitForRequest(req => req.url().includes('/api/save-layout'));
+    await page.locator('.lep-btn.lep-btn-primary').click();
+    await expect(page.locator('.lep-btn.lep-btn-primary')).toHaveText('Done');
+    const request = await requestPromise;
+    const currentLayout = JSON.parse(request.postData() || '{}').currentLayout;
+
+    // Regression guard: the overwrite must target the layout the slide actually uses
+    expect(currentLayout).toBe(layoutName);
+
+    // default.vue must be untouched by this overwrite
+    const afterOverwrite = readFileSync(defaultLayoutPath, 'utf-8');
+    expect(afterOverwrite).toBe(beforeOverwrite);
+
+    // The active layout file must contain the new value
+    const newLayoutContent = readFileSync(newLayoutPath, 'utf-8');
+    expect(newLayoutContent).toContain(`--ed-content-y: ${overwriteY}px`);
+  });
+
+  test('resized width/height survive save, reload, and reopening the layout editor', async ({ page }) => {
+    // Select the title and resize it
+    await page.locator('.lep-el').filter({ hasText: 'Title' }).click();
+    const wInput = page.locator('.lep-props label').filter({ hasText: 'W:' }).locator('input');
+    const hInput = page.locator('.lep-props label').filter({ hasText: 'H:' }).locator('input');
+
+    const titleOverlay = page.locator('.title-overlay');
+    const box = await titleOverlay.boundingBox();
+    if (!box) throw new Error('title-overlay not found');
+    const handleCX = box.x + box.width;
+    const handleCY = box.y + box.height;
+    // A delta chosen so the raw (unrounded) scaled offset is a non-integer
+    await page.mouse.move(handleCX, handleCY);
+    await page.mouse.down();
+    await page.mouse.move(handleCX + 83, handleCY + 37, { steps: 11 });
+    await page.mouse.up();
+
+    const savedW = await wInput.inputValue();
+    const savedH = await hInput.inputValue();
+
+    // Regression guard: resize must round to integers so the saved CSS px value
+    // can later be parsed back out by the `(-?\d+)px` restore regex
+    expect(Number.isInteger(parseFloat(savedW))).toBe(true);
+    expect(Number.isInteger(parseFloat(savedH))).toBe(true);
+
+    // Save as new layout (triggers auto-reload)
+    const layoutName = `test-layout-${Date.now()}`;
+    await page.locator('.lep-name-row input').fill(layoutName);
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'load', timeout: 30000 }),
+      page.locator('.lep-btn.lep-btn-primary').click(),
+    ]);
+    await page.waitForTimeout(2000);
+
+    // Reopen the editor and layout tab after reload
+    if (!(await page.locator('button:has-text("Hide editor")').isVisible().catch(() => false))) {
+      await page.locator('button:has-text("Show editor")').click();
+    }
+    await page.locator('button:has-text("Switch to layout tab")').click();
+    await page.waitForSelector('.layout-editor-panel', { timeout: 10000 });
+
+    // Verify the size was actually persisted to disk
+    let savedPath = resolve(rootLayoutsDir, `${layoutName}.vue`);
+    if (!existsSync(savedPath)) {
+      savedPath = resolve(e2eLayoutsDir, `${layoutName}.vue`);
+    }
+    const savedContent = readFileSync(savedPath, 'utf-8');
+    expect(savedContent).toContain(`--ed-title-w: ${savedW}px`);
+    expect(savedContent).toContain(`--ed-title-h: ${savedH}px`);
+
+    // Regression guard: reopening the layout editor must show the restored size,
+    // not silently fall back to the compiled-in default (400x36)
+    await page.locator('.lep-el').filter({ hasText: 'Title' }).click();
+    const restoredW = await wInput.inputValue();
+    const restoredH = await hInput.inputValue();
+    expect(parseFloat(restoredW)).toBeCloseTo(parseFloat(savedW), 0);
+    expect(parseFloat(restoredH)).toBeCloseTo(parseFloat(savedH), 0);
+  });
+
 });
