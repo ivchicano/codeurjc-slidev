@@ -3,8 +3,8 @@ import { useEditor } from '../composables/useEditor'
 import { ref, onMounted, watch } from 'vue'
 
 const VAR_MAP: Record<string, Record<string, string>> = {
-  'red-bar': { h: '--ed-red-h' },
-  logo: { y: '--ed-logo-y', x: '--ed-logo-rx' },
+  'red-bar': { y: '--ed-red-y', x: '--ed-red-x', w: '--ed-red-w', h: '--ed-red-h' },
+  logo: { y: '--ed-logo-y', x: '--ed-logo-rx', w: '--ed-logo-w', h: '--ed-logo-h' },
   title: { y: '--ed-title-y', x: '--ed-title-x', w: '--ed-title-w', h: '--ed-title-h' },
   content: { y: '--ed-content-y', x: '--ed-content-x', w: '--ed-content-w', h: '--ed-content-h' },
 }
@@ -18,6 +18,7 @@ onMounted(() => {
   // Use data-styles (never overridden by :style) so saved positions survive editor re-open
   const style = el.getAttribute('data-styles') || el.getAttribute('style') || ''
   const hiddenStr = el.getAttribute('data-hidden') || ''
+  const lockedStr = el.getAttribute('data-aspect-locked') || ''
 
   // Restore positions from static style CSS custom properties
   for (const [key, vars] of Object.entries(VAR_MAP)) {
@@ -40,6 +41,15 @@ onMounted(() => {
     }
     editor.setHidden(h)
   }
+
+  // Restore aspect-lock state. data-aspect-locked lists the *locked*
+  // elements (unlocked is the default), so anything not listed stays unlocked.
+  const lockedNames = lockedStr ? lockedStr.split(',') : []
+  const al: Record<string, boolean> = {}
+  for (const key of Object.keys(editor.positions)) {
+    al[key] = lockedNames.includes(key)
+  }
+  editor.setAspectLocked(al)
 })
 
 watch(editor.hidden, (v) => {
@@ -54,6 +64,19 @@ watch(editor.hidden, (v) => {
     el.removeAttribute('data-hidden')
   }
 })
+
+watch(editor.aspectLocked, (v) => {
+  const el = rootEl.value
+  if (!el) return
+  const lockedNames = Object.entries(v)
+    .filter(([_, locked]) => locked)
+    .map(([k]) => k)
+  if (lockedNames.length > 0) {
+    el.setAttribute('data-aspect-locked', lockedNames.join(','))
+  } else {
+    el.removeAttribute('data-aspect-locked')
+  }
+})
 </script>
 
 <template>
@@ -61,8 +84,8 @@ watch(editor.hidden, (v) => {
       ref="rootEl"
       class="slidev-layout default relative h-full w-full bg-white text-black"
       :class="{ editing: editor.editing.value }"
-      style="--ed-title-y: 20px; --ed-title-x: 24px; --ed-title-w: 400px; --ed-title-h: 36px; --ed-title-d: block; --ed-content-y: 80px; --ed-content-x: 24px; --ed-content-w: 700px; --ed-content-h: 400px; --ed-content-d: block; --ed-logo-y: 20px; --ed-logo-rx: 24px; --ed-red-h: 10px;"
-      data-styles="--ed-title-y: 20px; --ed-title-x: 24px; --ed-title-w: 400px; --ed-title-h: 36px; --ed-title-d: block; --ed-content-y: 80px; --ed-content-x: 24px; --ed-content-w: 700px; --ed-content-h: 400px; --ed-content-d: block; --ed-logo-y: 20px; --ed-logo-rx: 24px; --ed-red-h: 10px;"
+      style="--ed-title-y: 20px; --ed-title-x: 24px; --ed-title-w: 400px; --ed-title-h: 36px; --ed-title-d: block; --ed-content-y: 80px; --ed-content-x: 24px; --ed-content-w: 700px; --ed-content-h: 400px; --ed-content-d: block; --ed-logo-y: 20px; --ed-logo-rx: 24px; --ed-logo-w: 80px; --ed-logo-h: 48px; --ed-red-y: 0px; --ed-red-x: 0px; --ed-red-w: 980px; --ed-red-h: 10px;"
+      data-styles="--ed-title-y: 20px; --ed-title-x: 24px; --ed-title-w: 400px; --ed-title-h: 36px; --ed-title-d: block; --ed-content-y: 80px; --ed-content-x: 24px; --ed-content-w: 700px; --ed-content-h: 400px; --ed-content-d: block; --ed-logo-y: 20px; --ed-logo-rx: 24px; --ed-logo-w: 80px; --ed-logo-h: 48px; --ed-red-y: 0px; --ed-red-x: 0px; --ed-red-w: 980px; --ed-red-h: 10px;"
       :style="editor.editing.value ? editor.rootStyle.value : {}"
     >
     <!-- ed:red-bar:start -->
@@ -74,7 +97,7 @@ watch(editor.hidden, (v) => {
     >
       <div
         v-if="editor.editing.value && editor.selected.value === 'red-bar'"
-        class="resize-handle b"
+        class="resize-handle se"
         @mousedown.stop="editor.startResize($event, 'red-bar')"
       />
       <div
@@ -95,7 +118,7 @@ watch(editor.hidden, (v) => {
       <img src="/images/logo.png" alt="Logo">
       <div
         v-if="editor.editing.value && editor.selected.value === 'logo'"
-        class="resize-handle se"
+        class="resize-handle sw"
         @mousedown.stop="editor.startResize($event, 'logo')"
       />
       <div
@@ -232,9 +255,9 @@ watch(editor.hidden, (v) => {
 
 .red-bar {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
+  top: var(--ed-red-y, 0px);
+  left: var(--ed-red-x, 0px);
+  width: var(--ed-red-w, 100%);
   height: var(--ed-red-h, 10px);
   background-color: #cb0017;
   z-index: 100;
@@ -244,12 +267,15 @@ watch(editor.hidden, (v) => {
   position: absolute;
   top: var(--ed-logo-y, 20px);
   right: var(--ed-logo-rx, 24px);
+  width: var(--ed-logo-w, 80px);
+  height: var(--ed-logo-h, 48px);
   z-index: 50;
 }
 
 .logo img {
-  height: 48px;
-  width: auto;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .editing .red-bar,
@@ -283,11 +309,10 @@ watch(editor.hidden, (v) => {
   cursor: nwse-resize;
 }
 
-.resize-handle.b {
+.resize-handle.sw {
   bottom: -6px;
-  left: 50%;
-  margin-left: -6px;
-  cursor: ns-resize;
+  left: -6px;
+  cursor: nesw-resize;
 }
 
 .delete-btn {

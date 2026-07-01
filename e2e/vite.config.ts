@@ -5,8 +5,8 @@ import { fileURLToPath } from 'url'
 const __dirname = resolve(import.meta.dirname, '..')
 
 const VAR_MAP: Record<string, Record<string, string>> = {
-  'red-bar': { h: '--ed-red-h' },
-  logo: { y: '--ed-logo-y', x: '--ed-logo-rx' },
+  'red-bar': { y: '--ed-red-y', x: '--ed-red-x', w: '--ed-red-w', h: '--ed-red-h' },
+  logo: { y: '--ed-logo-y', x: '--ed-logo-rx', w: '--ed-logo-w', h: '--ed-logo-h' },
   title: { y: '--ed-title-y', x: '--ed-title-x', w: '--ed-title-w', h: '--ed-title-h' },
   content: { y: '--ed-content-y', x: '--ed-content-x', w: '--ed-content-w', h: '--ed-content-h' },
 }
@@ -84,6 +84,18 @@ export default {
             content = content.replace(
               /(class="slidev-layout default[^"]*"\s*)/,
               `$1data-hidden="${hiddenNames.join(',')}" `
+            )
+          }
+
+          // Persist aspect-lock state as data-aspect-locked, storing only the
+          // locked exceptions since every element is unlocked by default
+          const aspectLocked = body.aspectLocked || {}
+          const lockedNames = Object.keys(aspectLocked).filter(name => aspectLocked[name] === true)
+          content = content.replace(/\s*data-aspect-locked="[^"]*"/, '')
+          if (lockedNames.length > 0) {
+            content = content.replace(
+              /(class="slidev-layout default[^"]*"\s*)/,
+              `$1data-aspect-locked="${lockedNames.join(',')}" `
             )
           }
 

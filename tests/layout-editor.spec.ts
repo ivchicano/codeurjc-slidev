@@ -304,6 +304,183 @@ test.describe('Layout Editor E2E', () => {
     expect(savedContent).toContain(`--ed-content-y: ${newY}px;`);
   });
 
+  test('resizing the logo with aspect lock on preserves aspect ratio', async ({ page }) => {
+    const logoBtn = page.locator('.lep-el').filter({ hasText: 'Logo' });
+    await logoBtn.click();
+
+    // Elements are unlocked by default -- lock it explicitly for this test
+    const lockBtn = logoBtn.locator('.lep-lock-btn');
+    await expect(lockBtn).toHaveText('🔓');
+    await lockBtn.click();
+    await expect(lockBtn).toHaveText('🔒');
+
+    const wInput = page.locator('.lep-props label').filter({ hasText: 'W:' }).locator('input');
+    const hInput = page.locator('.lep-props label').filter({ hasText: 'H:' }).locator('input');
+    const initialW = parseFloat(await wInput.inputValue());
+    const initialH = parseFloat(await hInput.inputValue());
+    const initialRatio = initialW / initialH;
+
+    const logoEl = page.locator('.logo');
+    const box = await logoEl.boundingBox();
+    if (!box) throw new Error('.logo not found');
+    // The resize handle sits at the bottom-left (sw) corner, since the logo is right-anchored
+    const handleCX = box.x;
+    const handleCY = box.y + box.height;
+    await page.mouse.move(handleCX, handleCY);
+    await page.mouse.down();
+    // Move left to grow the box (growing extends away from the fixed right edge)
+    await page.mouse.move(handleCX - 40, handleCY + 20, { steps: 10 });
+    await page.mouse.up();
+
+    const newW = parseFloat(await wInput.inputValue());
+    const newH = parseFloat(await hInput.inputValue());
+    expect(newW).toBeGreaterThan(initialW);
+    expect(newH).toBeGreaterThan(initialH);
+    expect(newW / newH).toBeCloseTo(initialRatio, 1);
+
+    // The rendered <img> should reflect the new size (no longer hardcoded to 48px)
+    const img = page.locator('.logo img');
+    const imgBox = await img.boundingBox();
+    expect(imgBox!.width).toBeGreaterThan(0);
+  });
+
+  test('editing W with aspect lock on recomputes H to preserve ratio', async ({ page }) => {
+    const titleRow = page.locator('.lep-el').filter({ hasText: 'Title' });
+    await titleRow.click();
+
+    // Elements are unlocked by default -- lock it explicitly for this test
+    const lockBtn = titleRow.locator('.lep-lock-btn');
+    await expect(lockBtn).toHaveText('🔓');
+    await lockBtn.click();
+    await expect(lockBtn).toHaveText('🔒');
+
+    const wInput = page.locator('.lep-props label').filter({ hasText: 'W:' }).locator('input');
+    const hInput = page.locator('.lep-props label').filter({ hasText: 'H:' }).locator('input');
+
+    const initialW = parseFloat(await wInput.inputValue());
+    const initialH = parseFloat(await hInput.inputValue());
+    const ratio = initialW / initialH;
+
+    await wInput.fill(String(initialW * 2));
+    await page.waitForTimeout(100);
+
+    const newH = parseFloat(await hInput.inputValue());
+    expect(newH).toBeCloseTo((initialW * 2) / ratio, 0);
+  });
+
+  test('locking an element persists across save/reload and constrains resize to be proportional', async ({ page }) => {
+    const logoRow = page.locator('.lep-el').filter({ hasText: 'Logo' });
+    await logoRow.click();
+
+    // Elements are unlocked by default -- lock aspect ratio for the logo
+    const lockBtn = logoRow.locator('.lep-lock-btn');
+    await expect(lockBtn).toHaveText('🔓');
+    await lockBtn.click();
+    await expect(lockBtn).toHaveText('🔒');
+
+    const wInput = page.locator('.lep-props label').filter({ hasText: 'W:' }).locator('input');
+    const hInput = page.locator('.lep-props label').filter({ hasText: 'H:' }).locator('input');
+    const initialW = parseFloat(await wInput.inputValue());
+    const initialH = parseFloat(await hInput.inputValue());
+    const initialRatio = initialW / initialH;
+
+    const logoEl = page.locator('.logo');
+    const box = await logoEl.boundingBox();
+    if (!box) throw new Error('.logo not found');
+    const handleCX = box.x;
+    const handleCY = box.y + box.height;
+    await page.mouse.move(handleCX, handleCY);
+    await page.mouse.down();
+    // Locked: both dimensions change together, preserving the ratio
+    await page.mouse.move(handleCX - 40, handleCY + 20, { steps: 10 });
+    await page.mouse.up();
+
+    const newW = parseFloat(await wInput.inputValue());
+    const newH = parseFloat(await hInput.inputValue());
+    expect(newW).toBeGreaterThan(initialW);
+    expect(newW / newH).toBeCloseTo(initialRatio, 1);
+
+    // Save as new layout (triggers auto-reload)
+    const layoutName = `test-layout-${Date.now()}`;
+    await page.locator('.lep-name-row input').fill(layoutName);
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'load', timeout: 30000 }),
+      page.locator('.lep-btn.lep-btn-primary').click(),
+    ]);
+    await page.waitForTimeout(2000);
+
+    let savedPath = resolve(rootLayoutsDir, `${layoutName}.vue`);
+    if (!existsSync(savedPath)) {
+      savedPath = resolve(e2eLayoutsDir, `${layoutName}.vue`);
+    }
+    const savedContent = readFileSync(savedPath, 'utf-8');
+    expect(savedContent).toContain('data-aspect-locked="logo"');
+    expect(savedContent).toContain(`--ed-logo-w: ${Math.round(newW)}px`);
+
+    // Reopen the editor after reload and verify the lock state was restored
+    if (!(await page.locator('button:has-text("Hide editor")').isVisible().catch(() => false))) {
+      await page.locator('button:has-text("Show editor")').click();
+    }
+    await page.locator('button:has-text("Switch to layout tab")').click();
+    await page.waitForSelector('.layout-editor-panel', { timeout: 10000 });
+
+    const reopenedLogoRow = page.locator('.lep-el').filter({ hasText: 'Logo' });
+    await expect(reopenedLogoRow.locator('.lep-lock-btn')).toHaveText('🔒');
+  });
+
+  test('resizing the red bar changes both width and height', async ({ page }) => {
+    // Elements are unlocked by default, which is exactly what this test
+    // needs: the bar's default ratio (980x10) is extreme, so a locked width
+    // shrink would shrink height down to a couple of px, causing the corner
+    // delete button and resize handle to overlap.
+    const redBarRow = page.locator('.lep-el').filter({ hasText: 'Red Bar' });
+    await redBarRow.click();
+
+    const wInput = page.locator('.lep-props label').filter({ hasText: 'W:' }).locator('input');
+    const hInput = page.locator('.lep-props label').filter({ hasText: 'H:' }).locator('input');
+
+    // Shrink the bar's width only, so its resize handle isn't sitting under
+    // the SideEditor panel's own resize divider at the slide's right edge
+    await wInput.fill('500');
+    await page.waitForTimeout(100);
+    const initialW = parseFloat(await wInput.inputValue());
+    const initialH = parseFloat(await hInput.inputValue());
+
+    const redBarEl = page.locator('.red-bar');
+    const box = await redBarEl.boundingBox();
+    if (!box) throw new Error('.red-bar not found');
+    const handleCX = box.x + box.width;
+    const handleCY = box.y + box.height;
+    await page.mouse.move(handleCX, handleCY);
+    await page.mouse.down();
+    await page.mouse.move(handleCX + 100, handleCY + 5, { steps: 10 });
+    await page.mouse.up();
+
+    const newW = parseFloat(await wInput.inputValue());
+    const newH = parseFloat(await hInput.inputValue());
+    // Unlike the old hardcoded `width: 100%` bar, both dimensions can now change
+    expect(newW).toBeGreaterThan(initialW);
+    expect(newH).toBeGreaterThan(initialH);
+
+    const saveAsCheckbox = page.locator('input[type="checkbox"]');
+    if (!(await saveAsCheckbox.isChecked())) await saveAsCheckbox.click();
+    const layoutName = `test-layout-${Date.now()}`;
+    await page.locator('.lep-name-row input').fill(layoutName);
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'load', timeout: 30000 }),
+      page.locator('.lep-btn.lep-btn-primary').click(),
+    ]);
+    await page.waitForTimeout(2000);
+
+    let savedPath = resolve(rootLayoutsDir, `${layoutName}.vue`);
+    if (!existsSync(savedPath)) {
+      savedPath = resolve(e2eLayoutsDir, `${layoutName}.vue`);
+    }
+    const savedContent = readFileSync(savedPath, 'utf-8');
+    expect(savedContent).toContain(`--ed-red-w: ${Math.round(newW)}px`);
+    expect(savedContent).toContain(`--ed-red-h: ${Math.round(newH)}px`);
+  });
+
   test('can delete an element and restore it with Undo while editing', async ({ page }) => {
     // Select the logo element
     const logoBtn = page.locator('.lep-el').filter({ hasText: 'Logo' });
@@ -587,5 +764,6 @@ test.describe('Layout Editor E2E', () => {
     const shownText = await page.locator('textarea').first().inputValue();
     expect(shownText).toContain(`layout: ${layoutName}`);
   });
+
 
 });

@@ -17,12 +17,12 @@ const ELEMENTS: Record<string, {
   'red-bar': {
     label: 'Red Bar',
     color: '#cb0017',
-    initial: { x: 0, y: 0, w: 100, h: 10 },
+    initial: { x: 0, y: 0, w: 980, h: 10 },
     cssOutput: (pos) => [
       'position: absolute',
-      'top: 0',
-      'left: 0',
-      'width: 100%',
+      `top: ${pos.y}px`,
+      `left: ${pos.x}px`,
+      `width: ${pos.w}px`,
       `height: ${pos.h}px`,
       'background-color: #cb0017',
       'z-index: 100',
@@ -31,12 +31,14 @@ const ELEMENTS: Record<string, {
   logo: {
     label: 'Logo',
     color: '#e8792b',
-    initial: { x: 24, y: 20, w: 120, h: 48 },
+    initial: { x: 24, y: 20, w: 80, h: 48 },
     invertX: true,
     cssOutput: (pos) => [
       'position: absolute',
       `top: ${pos.y}px`,
       `right: ${pos.x}px`,
+      `width: ${pos.w}px`,
+      `height: ${pos.h}px`,
       'z-index: 50',
     ].map(l => `  ${l};`).join('\n'),
   },
@@ -72,15 +74,18 @@ const ELEMENTS: Record<string, {
 interface Snapshot {
   positions: Record<string, Rect>
   hidden: Record<string, boolean>
+  aspectLocked: Record<string, boolean>
 }
 
 const _sharedEditing = ref(false)
 const _sharedSelected = ref<string | null>(null)
 const _sharedHidden = reactive<Record<string, boolean>>({})
+const _sharedAspectLocked = reactive<Record<string, boolean>>({})
 const _sharedPositions = reactive<Record<string, Rect>>({})
 for (const key of Object.keys(ELEMENTS)) {
   _sharedPositions[key] = { ...ELEMENTS[key].initial }
   _sharedHidden[key] = false
+  _sharedAspectLocked[key] = false
 }
 const _sharedUndoStack = ref<Snapshot[]>([])
 const _sharedUndoCheckpoint = ref<Snapshot | null>(null)
@@ -90,6 +95,7 @@ export function useEditor() {
   const selected = _sharedSelected
   const positions = _sharedPositions
   const hidden = _sharedHidden
+  const aspectLocked = _sharedAspectLocked
 
   const dragState = ref<{
     el: string
@@ -108,6 +114,8 @@ export function useEditor() {
     origW: number
     origH: number
     scale: number
+    invertX: boolean
+    ratio: number | null
   } | null>(null)
 
   function toggle() {
@@ -121,7 +129,7 @@ export function useEditor() {
   const canUndo = computed(() => undoStack.value.length > 0)
 
   function pushUndoCheckpoint() {
-    undoCheckpoint.value = { positions: clonePositions(), hidden: cloneHidden() }
+    undoCheckpoint.value = { positions: clonePositions(), hidden: cloneHidden(), aspectLocked: cloneAspectLocked() }
   }
 
   function commitUndo() {
@@ -133,7 +141,8 @@ export function useEditor() {
         c.positions[key].w !== positions[key].w || c.positions[key].h !== positions[key].h
       )
       const hiddenChanged = Object.keys(c.hidden).some(key => c.hidden[key] !== hidden[key])
-      if (positionsChanged || hiddenChanged) undoStack.value.push(undoCheckpoint.value)
+      const aspectLockedChanged = Object.keys(c.aspectLocked).some(key => c.aspectLocked[key] !== aspectLocked[key])
+      if (positionsChanged || hiddenChanged || aspectLockedChanged) undoStack.value.push(undoCheckpoint.value)
       undoCheckpoint.value = null
     }
   }
@@ -146,6 +155,9 @@ export function useEditor() {
     }
     for (const key of Object.keys(prev.hidden)) {
       hidden[key] = prev.hidden[key]
+    }
+    for (const key of Object.keys(prev.aspectLocked)) {
+      aspectLocked[key] = prev.aspectLocked[key]
     }
   }
 
@@ -209,10 +221,13 @@ export function useEditor() {
     const p = positions[name]
     if (!p) return
     pushUndoCheckpoint()
+    const elCfg = ELEMENTS[name]
     resizeState.value = {
       el: name, startX: e.clientX, startY: e.clientY,
       origW: p.w, origH: p.h,
       scale: getContainerScale(),
+      invertX: elCfg?.invertX ?? false,
+      ratio: aspectLocked[name] ? p.w / p.h : null,
     }
     window.addEventListener('mousemove', onResize)
     window.addEventListener('mouseup', stopResize)
@@ -224,8 +239,22 @@ export function useEditor() {
     if (!p) return
     const dx = (e.clientX - resizeState.value.startX) / resizeState.value.scale
     const dy = (e.clientY - resizeState.value.startY) / resizeState.value.scale
-    p.w = Math.round(Math.max(20, resizeState.value.origW + dx))
-    p.h = Math.round(Math.max(10, resizeState.value.origH + dy))
+    const xMul = resizeState.value.invertX ? -1 : 1
+    const rawW = resizeState.value.origW + dx * xMul
+    const rawH = resizeState.value.origH + dy
+    const ratio = resizeState.value.ratio
+    if (ratio) {
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        p.w = Math.round(Math.max(20, rawW))
+        p.h = Math.round(Math.max(10, p.w / ratio))
+      } else {
+        p.h = Math.round(Math.max(10, rawH))
+        p.w = Math.round(Math.max(20, p.h * ratio))
+      }
+    } else {
+      p.w = Math.round(Math.max(20, rawW))
+      p.h = Math.round(Math.max(10, rawH))
+    }
   }
 
   function stopResize() {
@@ -252,6 +281,11 @@ export function useEditor() {
       '--ed-content-h': c ? `${c.h}px` : '200px',
       '--ed-logo-y': l ? `${l.y}px` : '20px',
       '--ed-logo-rx': l ? `${l.x}px` : '24px',
+      '--ed-logo-w': l ? `${l.w}px` : '80px',
+      '--ed-logo-h': l ? `${l.h}px` : '48px',
+      '--ed-red-y': r ? `${r.y}px` : '0px',
+      '--ed-red-x': r ? `${r.x}px` : '0px',
+      '--ed-red-w': r ? `${r.w}px` : '100%',
       '--ed-red-h': r ? `${r.h}px` : '10px',
       '--ed-title-d': hidden.title ? 'none' : 'block',
       '--ed-content-d': hidden.content ? 'none' : 'block',
@@ -281,6 +315,20 @@ export function useEditor() {
     }
   }
 
+  function toggleAspectLock(name: string) {
+    pushUndoCheckpoint()
+    _sharedAspectLocked[name] = !_sharedAspectLocked[name]
+    commitUndo()
+  }
+
+  function setAspectLocked(al: Record<string, boolean>) {
+    for (const [key, val] of Object.entries(al)) {
+      if (key in _sharedAspectLocked) {
+        _sharedAspectLocked[key] = val
+      }
+    }
+  }
+
   const saving = ref(false)
   const saved = ref(false)
 
@@ -296,7 +344,11 @@ export function useEditor() {
     return { ...hidden }
   }
 
-  const snapshot = ref<Snapshot>({ positions: clonePositions(), hidden: cloneHidden() })
+  function cloneAspectLocked(): Record<string, boolean> {
+    return { ...aspectLocked }
+  }
+
+  const snapshot = ref<Snapshot>({ positions: clonePositions(), hidden: cloneHidden(), aspectLocked: cloneAspectLocked() })
 
   const dirty = computed(() => {
     for (const key of Object.keys(positions)) {
@@ -308,6 +360,9 @@ export function useEditor() {
     for (const key of Object.keys(hidden)) {
       if (hidden[key] !== snapshot.value.hidden[key]) return true
     }
+    for (const key of Object.keys(aspectLocked)) {
+      if (aspectLocked[key] !== snapshot.value.aspectLocked[key]) return true
+    }
     return false
   })
 
@@ -318,6 +373,9 @@ export function useEditor() {
     }
     for (const key of Object.keys(snapshot.value.hidden)) {
       hidden[key] = snapshot.value.hidden[key]
+    }
+    for (const key of Object.keys(snapshot.value.aspectLocked)) {
+      aspectLocked[key] = snapshot.value.aspectLocked[key]
     }
   }
 
@@ -334,6 +392,7 @@ export function useEditor() {
         body: JSON.stringify({
           positions: { ...positions },
           hidden: hiddenOverride ?? { ...hidden },
+          aspectLocked: { ...aspectLocked },
           saveAs: saveAs.value,
           layoutName: saveLayoutName.value,
         }),
@@ -343,7 +402,7 @@ export function useEditor() {
         if (result?.layoutName) {
           saveLayoutName.value = result.layoutName
         }
-        snapshot.value = { positions: clonePositions(), hidden: cloneHidden() }
+        snapshot.value = { positions: clonePositions(), hidden: cloneHidden(), aspectLocked: cloneAspectLocked() }
         saved.value = true
         setTimeout(() => { saved.value = false }, 2000)
         return result
@@ -364,7 +423,7 @@ export function useEditor() {
   }
 
   function updateSnapshot() {
-    snapshot.value = { positions: clonePositions(), hidden: cloneHidden() }
+    snapshot.value = { positions: clonePositions(), hidden: cloneHidden(), aspectLocked: cloneAspectLocked() }
   }
 
   return {
@@ -372,6 +431,7 @@ export function useEditor() {
     selected,
     positions,
     hidden,
+    aspectLocked,
     elementNames,
     saving,
     saved,
@@ -390,6 +450,8 @@ export function useEditor() {
     clearUndo,
     removeElement,
     setHidden,
+    toggleAspectLock,
+    setAspectLocked,
     updateSnapshot,
   }
 }

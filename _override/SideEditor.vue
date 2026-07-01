@@ -26,6 +26,30 @@ const editor = useEditor()
 
 const visibleElementNames = computed(() => editor.elementNames.value.filter(name => !editor.hidden[name]))
 
+const dimRatio = ref<number | null>(null)
+
+function onDimFocus(dim: 'w' | 'h') {
+  const name = editor.selected.value
+  if (!name) return
+  const p = editor.positions[name]
+  dimRatio.value = editor.aspectLocked[name] ? p.w / p.h : null
+}
+
+function onDimInput(dim: 'w' | 'h', e: Event) {
+  const name = editor.selected.value
+  if (!name) return
+  const p = editor.positions[name]
+  const raw = Number((e.target as HTMLInputElement).value)
+  if (!Number.isFinite(raw)) return
+  if (dim === 'w') {
+    p.w = raw
+    if (dimRatio.value) p.h = Math.round(raw / dimRatio.value)
+  } else {
+    p.h = raw
+    if (dimRatio.value) p.w = Math.round(raw * dimRatio.value)
+  }
+}
+
 // The layout editor patches frontmatter.layout via a skipHmr update (to avoid
 // a premature auto-reload racing with our own reload after saving a layout).
 // That leaves the server's cached frontmatterRaw stale until something else
@@ -78,12 +102,17 @@ async function save() {
 }
 
 async function onSaveLayout() {
-  // Read hidden state from data-hidden attribute on the slide element
+  // Read hidden/aspect-lock state from data-* attributes on the slide element
   const layoutEl = document.querySelector('.slidev-layout.default')
   const hiddenStr = layoutEl?.getAttribute('data-hidden') || ''
   const hiddenList = hiddenStr ? hiddenStr.split(',') : []
   const hidden = Object.fromEntries(
     Object.keys(editor.positions).map(k => [k, hiddenList.includes(k)])
+  )
+  const lockedStr = layoutEl?.getAttribute('data-aspect-locked') || ''
+  const lockedList = lockedStr ? lockedStr.split(',') : []
+  const aspectLocked = Object.fromEntries(
+    Object.keys(editor.positions).map(k => [k, lockedList.includes(k)])
   )
 
   const currentLayout = info.value?.frontmatter?.layout || 'default'
@@ -97,6 +126,7 @@ async function onSaveLayout() {
       body: JSON.stringify({
         positions: { ...editor.positions },
         hidden,
+        aspectLocked,
         saveAs: editor.saveAs.value,
         layoutName: editor.saveLayoutName.value,
         currentLayout,
@@ -255,24 +285,33 @@ throttledWatch(
       <div v-show="tab === 'layout'" class="layout-editor-panel">
         <div class="lep-section-label">Elements</div>
         <div class="lep-elements">
-          <button
+          <div
             v-for="name in visibleElementNames"
             :key="name"
             class="lep-el"
             :class="{ active: editor.selected.value === name }"
+            role="button"
+            tabindex="0"
             @click="editor.selected.value = name"
+            @keydown.enter="editor.selected.value = name"
           >
             <span class="lep-dot" :style="{ background: { 'red-bar': '#cb0017', logo: '#e8792b', title: '#2563eb', content: '#16a34a' }[name] }" />
-            {{ { 'red-bar': 'Red Bar', logo: 'Logo', title: 'Title', content: 'Content' }[name] }}
-          </button>
+            <span class="lep-el-label">{{ { 'red-bar': 'Red Bar', logo: 'Logo', title: 'Title', content: 'Content' }[name] }}</span>
+            <button
+              type="button"
+              class="lep-lock-btn"
+              :title="editor.aspectLocked[name] ? 'Unlock aspect ratio' : 'Lock aspect ratio'"
+              @click.stop="editor.toggleAspectLock(name)"
+            >{{ editor.aspectLocked[name] ? '🔒' : '🔓' }}</button>
+          </div>
         </div>
         <div v-if="editor.selected.value" class="lep-props-section">
           <div class="lep-section-label">Properties</div>
           <div class="lep-props">
             <label>X: <input v-model.number="editor.positions[editor.selected.value].x" type="number" class="lep-input"></label>
             <label>Y: <input v-model.number="editor.positions[editor.selected.value].y" type="number" class="lep-input"></label>
-            <label>W: <input v-model.number="editor.positions[editor.selected.value].w" type="number" class="lep-input"></label>
-            <label>H: <input v-model.number="editor.positions[editor.selected.value].h" type="number" class="lep-input"></label>
+            <label>W: <input :value="editor.positions[editor.selected.value].w" type="number" class="lep-input" @focus="onDimFocus('w')" @input="onDimInput('w', $event)"></label>
+            <label>H: <input :value="editor.positions[editor.selected.value].h" type="number" class="lep-input" @focus="onDimFocus('h')" @input="onDimInput('h', $event)"></label>
           </div>
         </div>
         <div class="lep-save-section">
@@ -362,6 +401,27 @@ throttledWatch(
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+.lep-el-label {
+  flex: 1;
+}
+
+.lep-lock-btn {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 2px;
+  opacity: 0.7;
+}
+
+.lep-lock-btn:hover {
+  opacity: 1;
+  background: rgba(128,128,128,0.15);
 }
 
 .lep-props-section {

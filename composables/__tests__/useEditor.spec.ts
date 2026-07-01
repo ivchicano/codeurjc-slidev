@@ -223,7 +223,7 @@ describe('useEditor', () => {
 
   it('saveLayout returns null on failure', async () => {
     const { saveLayout } = useEditor()
-    
+
     // Mock failed response
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: false,
@@ -231,5 +231,123 @@ describe('useEditor', () => {
 
     const result = await saveLayout()
     expect(result).toBeNull()
+  })
+
+  it('all elements start with aspectLocked false', () => {
+    const { aspectLocked, elementNames } = useEditor()
+    for (const name of elementNames.value) {
+      expect(aspectLocked[name]).toBe(false)
+    }
+  })
+
+  it('toggleAspectLock flips the flag for a single element and enables undo', () => {
+    const { toggleAspectLock, aspectLocked, canUndo, clearUndo } = useEditor()
+    clearUndo()
+    aspectLocked.title = false
+    toggleAspectLock('title')
+    expect(aspectLocked.title).toBe(true)
+    expect(aspectLocked.content).toBe(false)
+    expect(canUndo.value).toBe(true)
+  })
+
+  it('undo restores aspectLocked state', () => {
+    const { toggleAspectLock, undo, aspectLocked, clearUndo } = useEditor()
+    clearUndo()
+    aspectLocked.title = true
+    toggleAspectLock('title')
+    expect(aspectLocked.title).toBe(false)
+    undo()
+    expect(aspectLocked.title).toBe(true)
+  })
+
+  it('resetLayout restores aspectLocked to the last snapshot', () => {
+    const { toggleAspectLock, resetLayout, updateSnapshot, aspectLocked, clearUndo } = useEditor()
+    clearUndo()
+    aspectLocked.logo = true
+    updateSnapshot()
+    toggleAspectLock('logo')
+    expect(aspectLocked.logo).toBe(false)
+    resetLayout()
+    expect(aspectLocked.logo).toBe(true)
+  })
+
+  it('dirty reflects aspectLocked changes', () => {
+    const { toggleAspectLock, dirty, updateSnapshot, aspectLocked, clearUndo } = useEditor()
+    clearUndo()
+    aspectLocked.content = true
+    updateSnapshot()
+    expect(dirty.value).toBe(false)
+    toggleAspectLock('content')
+    expect(dirty.value).toBe(true)
+  })
+
+  it('locked resize preserves the aspect ratio captured at gesture start', () => {
+    const { startResize, editing, clearUndo, positions, aspectLocked } = useEditor()
+    clearUndo()
+    editing.value = true
+    aspectLocked.title = true
+    const origRatio = positions.title.w / positions.title.h
+    const mouseDown = new MouseEvent('mousedown', { clientX: 100, clientY: 100 })
+    startResize(mouseDown, 'title')
+    // Diagonal drag with width as the dominant delta
+    const mouseMove = new MouseEvent('mousemove', { clientX: 180, clientY: 130 })
+    window.dispatchEvent(mouseMove)
+    window.dispatchEvent(new MouseEvent('mouseup'))
+    const newRatio = positions.title.w / positions.title.h
+    expect(newRatio).toBeCloseTo(origRatio, 0)
+  })
+
+  it('unlocked resize changes width and height independently', () => {
+    const { startResize, editing, clearUndo, positions, aspectLocked } = useEditor()
+    clearUndo()
+    editing.value = true
+    aspectLocked.title = false
+    const origRatio = positions.title.w / positions.title.h
+    const mouseDown = new MouseEvent('mousedown', { clientX: 100, clientY: 100 })
+    startResize(mouseDown, 'title')
+    const mouseMove = new MouseEvent('mousemove', { clientX: 180, clientY: 130 })
+    window.dispatchEvent(mouseMove)
+    window.dispatchEvent(new MouseEvent('mouseup'))
+    const newRatio = positions.title.w / positions.title.h
+    expect(newRatio).not.toBeCloseTo(origRatio, 1)
+  })
+
+  it('invertX element (logo) resize handle tracks the cursor: moving left grows width', () => {
+    const { startResize, editing, clearUndo, positions, aspectLocked } = useEditor()
+    clearUndo()
+    editing.value = true
+    aspectLocked.logo = false
+    const origW = positions.logo.w
+    const mouseDown = new MouseEvent('mousedown', { clientX: 200, clientY: 100 })
+    startResize(mouseDown, 'logo')
+    // Cursor moves left (toward the anchored right edge's opposite side)
+    const mouseMove = new MouseEvent('mousemove', { clientX: 150, clientY: 100 })
+    window.dispatchEvent(mouseMove)
+    window.dispatchEvent(new MouseEvent('mouseup'))
+    expect(positions.logo.w).toBeGreaterThan(origW)
+  })
+
+  it('invertX element (logo) resize handle tracks the cursor: moving right shrinks width', () => {
+    const { startResize, editing, clearUndo, positions, aspectLocked } = useEditor()
+    clearUndo()
+    editing.value = true
+    aspectLocked.logo = false
+    const origW = positions.logo.w
+    const mouseDown = new MouseEvent('mousedown', { clientX: 150, clientY: 100 })
+    startResize(mouseDown, 'logo')
+    const mouseMove = new MouseEvent('mousemove', { clientX: 170, clientY: 100 })
+    window.dispatchEvent(mouseMove)
+    window.dispatchEvent(new MouseEvent('mouseup'))
+    expect(positions.logo.w).toBeLessThan(origW)
+  })
+
+  it('rootStyle includes logo and red-bar width/height when editing', () => {
+    const { editing, rootStyle } = useEditor()
+    editing.value = true
+    const style = rootStyle.value
+    expect(style['--ed-logo-w']).toMatch(/\d+px/)
+    expect(style['--ed-logo-h']).toMatch(/\d+px/)
+    expect(style['--ed-red-w']).toMatch(/\d+px/)
+    expect(style['--ed-red-h']).toMatch(/\d+px/)
   })
 })

@@ -36,7 +36,7 @@ pnpm test:e2e               # run e2e tests (playwright, auto-starts server)
 - **Unit tests** (`vitest`): `pnpm test` — runs `composables/__tests__/*.spec.ts` in jsdom
 - **E2e tests** (`playwright`): `pnpm test:e2e` — runs `tests/*.spec.ts` against a Chromium browser
 
-The e2e `webServer` in `playwright.config.ts` auto-starts Slidev on port 3030 using `e2e/slides.md` as entry. The `e2e/` directory contains symlinks to the root files (`slides.md`, `layouts/default.vue`, `composables/useEditor.ts`, `_override/SideEditor.vue`, `public/`) and its own `vite.config.ts`. Symlinks keep the e2e environment in sync with the root project. All test modifications are restored by `afterAll` hooks.
+The e2e `webServer` in `playwright.config.ts` auto-starts Slidev on port 3030 using `e2e/slides.md` as entry. The `e2e/` directory contains symlinks to the root files (`slides.md`, `layouts/default.vue`, `composables/useEditor.ts`, `_override/SideEditor.vue`, `public/`) and its own `vite.config.ts`. Symlinks keep the e2e environment in sync with the root project, but `e2e/vite.config.ts` is **not** a symlink — it's a standalone copy (with adjusted `__dirname` paths) that must be manually kept in sync with root `vite.config.ts` whenever the `/api/save-layout` middleware or its `VAR_MAP` changes, or e2e tests will silently exercise stale save/restore logic. All test modifications are restored by `afterAll` hooks.
 
 ## Development cycle
 
